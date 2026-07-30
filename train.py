@@ -37,6 +37,7 @@ def main() -> None:
         project=str(PROJECT_ROOT / "runs" / "gun_detector"),
         name="baseline",
         seed=42,
+        verbose=True
     )
 
 
