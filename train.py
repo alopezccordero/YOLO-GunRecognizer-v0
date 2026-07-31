@@ -22,12 +22,12 @@ def main() -> None:
     if torch.cuda.is_available():
         print("GPU:", torch.cuda.get_device_name(0))
 
-    model = YOLO("yolo26n.pt")
+    model = YOLO("yolo26s.pt")
 
     model.train(
         data=str(DATASET_YAML),
         epochs=200,
-        imgsz=640,
+        imgsz=960,
         batch=16,
         device=device,
         workers=8,
@@ -35,9 +35,12 @@ def main() -> None:
         save=True,
         save_period=10,
         project=str(PROJECT_ROOT / "runs" / "gun_detector"),
-        name="baseline",
+        name="experiment_2",
         seed=42,
-        verbose=True
+        verbose=True,
+        mixup=0.1,
+        copy_paste=0.2,
+        cos_lr=True
     )
 
 

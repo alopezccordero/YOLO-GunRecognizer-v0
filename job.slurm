@@ -25,12 +25,11 @@ python --version
 
 nvidia-smi
 
-
 python train.py
 
 WEBHOOK_URL=$(cat ~/.discord_webhook)
 
 curl -sS \
     -H "Content-Type: application/json" \
-    -d "{\"content\":\"Job ${SLURM_JOB_ID} finished successfully}" \
+    -d "{\"content\":\"Job ${SLURM_JOB_ID} finished successfully\"}" \
     "$WEBHOOK_URL"
