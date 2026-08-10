@@ -35,7 +35,7 @@ def main() -> None:
         save=True,
         save_period=10,
         project=str(PROJECT_ROOT / "runs" / "gun_detector"),
-        name="yolo26s_960_aug_2",
+        name="yolo26s_1280_diverse",
         seed=42,
         verbose=True,
         mixup=0.1,
