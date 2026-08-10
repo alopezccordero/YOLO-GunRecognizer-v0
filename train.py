@@ -27,8 +27,8 @@ def main() -> None:
     model.train(
         data=str(DATASET_YAML),
         epochs=200,
-        imgsz=960,
-        batch=16,
+        imgsz=1280,
+        batch=12,
         device=device,
         workers=8,
         patience=30,
@@ -40,7 +40,9 @@ def main() -> None:
         verbose=True,
         mixup=0.1,
         copy_paste=0.2,
-        cos_lr=True
+        cos_lr=True,
+        scale=0.9,
+        multi_scale=True
     )
 
 
