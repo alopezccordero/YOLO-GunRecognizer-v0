@@ -5,8 +5,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --output=YOLO-GunRecog-v0%j.out
-#SBATCH --error=YOLO-GunRecog-v0%j.err
+#SBATCH --output=YOLO-GunRecog-%j.out
+#SBATCH --error=YOLO-GunRecog-%j.err
 
 source ~/miniconda3/bin/activate
 conda activate mujoco-env
