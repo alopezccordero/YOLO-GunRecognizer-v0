@@ -28,7 +28,7 @@ def main() -> None:
         data=str(DATASET_YAML),
         epochs=200,
         imgsz=1280,
-        batch=12,
+        batch=8,
         device=device,
         workers=8,
         patience=30,
