@@ -66,7 +66,7 @@ def main() -> None:
                          "(default: '<project>_').")
     ap.add_argument("--firearm-classes", nargs="*", default=[],
                     help="Extra exact class names to treat as firearms.")
-    ap.add_argument("--all-to-train", actio="store_true",
+    ap.add_argument("--all-to-train", action="store_true",
                     help="every source split into train")
     ap.add_argument("--dry-run", action="store_true",
                     help="Report what would be merged, copy nothing.")
