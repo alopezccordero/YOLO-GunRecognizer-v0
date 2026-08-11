@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=YOLO-GunRecog-V0
-#SBATCH --partition=gpua30q
+#SBATCH --partition=kimq
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
