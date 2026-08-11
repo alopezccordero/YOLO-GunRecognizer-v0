@@ -44,13 +44,37 @@ def list_images(split: str, keep) -> list[str]:
             if p.suffix.lower() in IMG_EXTS and keep(p.name)]
 
 
+def recall_prec_at_conf(m):
+    """Recall/precision for class 0 at the confusion-matrix's conf threshold.
+
+    b.mp / b.mr are reported at the max-F1 point on the PR curve, NOT at a
+    fixed conf. To see deployment behaviour at a chosen threshold we read the
+    confusion matrix, which IS built at the conf passed to val().
+    Layout: matrix[pred, true], last index = background.
+      TP=matrix[0,0]  FP=matrix[0,1](pred gun, true bg)  FN=matrix[1,0](missed)
+    Returns (R, P) or (None, None) if the matrix isn't available.
+    """
+    try:
+        cm = m.confusion_matrix.matrix
+        tp = float(cm[0, 0]); fp = float(cm[0, 1]); fn = float(cm[1, 0])
+        r = tp / (tp + fn) if (tp + fn) else 0.0
+        p = tp / (tp + fp) if (tp + fp) else 0.0
+        return r, p
+    except Exception:
+        return None, None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--weights", required=True)
     ap.add_argument("--imgsz", type=int, default=960)
     ap.add_argument("--conf", type=float, default=0.001,
-                    help="Low conf for metric integration (default 0.001).")
+                    help="Low conf for mAP / max-F1 P/R integration (default 0.001).")
     ap.add_argument("--iou", type=float, default=0.7)
+    ap.add_argument("--augment", action="store_true",
+                    help="Enable test-time augmentation (TTA).")
+    ap.add_argument("--dep-conf", type=float, default=0.20,
+                    help="Deployment conf threshold for the R@conf / P@conf columns.")
     args = ap.parse_args()
 
     model = YOLO(args.weights)
@@ -70,25 +94,41 @@ def main() -> None:
                 "val": str(list_txt),
                 "names": {0: "gun"},
             }))
+            # Pass 1: low conf -> mAP + max-F1 P/R (comparable to prior tables).
             m = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
-                          conf=args.conf, iou=args.iou, plots=False,
-                          verbose=False)
+                          conf=args.conf, iou=args.iou, augment=args.augment,
+                          plots=False, verbose=False)
             b = m.box
+            # Pass 2: deployment conf -> confusion-matrix recall/precision.
+            m2 = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
+                           conf=args.dep_conf, iou=args.iou, augment=args.augment,
+                           plots=False, verbose=False)
+            r_dep, p_dep = recall_prec_at_conf(m2)
             rows.append((name, len(imgs),
-                         (b.mp, b.mr, b.map50, b.map)))
+                         (b.mp, b.mr, b.map50, b.map, r_dep, p_dep)))
 
-    print("\n" + "=" * 68)
+    tta = " +TTA" if args.augment else ""
+    print("\n" + "=" * 88)
+    print(f"weights={Path(args.weights).parent.parent.name}  imgsz={args.imgsz}"
+          f"  dep_conf={args.dep_conf}{tta}")
     print(f"{'slice':22s} {'imgs':>5s}  {'P':>6s} {'R':>6s} "
-          f"{'mAP50':>6s} {'mAP50-95':>8s}")
-    print("-" * 68)
+          f"{'mAP50':>6s} {'mAP50-95':>8s}  {'R@'+str(args.dep_conf):>7s} "
+          f"{'P@'+str(args.dep_conf):>7s}")
+    print("-" * 88)
     for name, n, met in rows:
         if met is None:
             print(f"{name:22s} {n:5d}   (no images)")
         else:
-            p, r, m50, m = met
-            print(f"{name:22s} {n:5d}  {p:6.3f} {r:6.3f} {m50:6.3f} {m:8.3f}")
-    print("=" * 68)
-    print("Headline number: 'test / youtube' recall = never-seen, in-the-wild.")
+            p, r, m50, m, rd, pd = met
+            rd_s = f"{rd:7.3f}" if rd is not None else "   n/a "
+            pd_s = f"{pd:7.3f}" if pd is not None else "   n/a "
+            print(f"{name:22s} {n:5d}  {p:6.3f} {r:6.3f} {m50:6.3f} {m:8.3f}"
+                  f"  {rd_s} {pd_s}")
+    print("=" * 88)
+    print("P/R/mAP50/mAP50-95 = PR-curve metrics (P/R at max-F1 point).")
+    print(f"R@{args.dep_conf}/P@{args.dep_conf} = recall/precision at the deployment "
+          f"conf threshold (from confusion matrix).")
+    print("Headline number: 'test / youtube' = never-seen, in-the-wild.")
 
 
 if __name__ == "__main__":
