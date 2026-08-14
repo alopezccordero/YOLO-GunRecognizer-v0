@@ -5,7 +5,7 @@ from ultralytics import YOLO
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DATASET_YAML = PROJECT_ROOT / "gun_dataset" / "dataset.yaml"
+DATASET_YAML = PROJECT_ROOT / "gun_dataset" / "dataset_downsample_cctv.yaml"
 
 
 def main() -> None:
@@ -30,7 +30,7 @@ def main() -> None:
         imgsz=1280,
         batch=16,
         device=device,
-        workers=8,
+        workers=4,
         patience=30,
         save=True,
         save_period=10,
