@@ -38,7 +38,7 @@ def main() -> None:
         name="yolo26s_1280_diverse_2_downsample",
         seed=42,
         verbose=True,
-        mixup=0.1,
+        mixup=0.2,
         copy_paste=0.2,
         cos_lr=True,
         scale=0.9,
