@@ -9,11 +9,11 @@ IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 def kind(name):
     if name.startswith("cctv-gun-detector_"): return "diverse"   # NEW — keep ALL
+    if name.startswith("hn_"): return "hard_negative" #HARD NEGATIVES - Keep ALL
     if name.startswith("footage-guntest_"): return "diverse" # NEW - keep ALL
     if name.startswith("cctv_"):              return "staged"    # gmd/mgd — downsample
     if name.startswith("r46_"):               return "r46"       # keep
     if name.startswith("pistol-csvic_"):      return "pistol"    # exclude
-    if name.startswith("hn_"):                return "hardneg"   # EXCLUDE from v2 (hard negs)
     return "oi"                                                   # keep
 
 buckets = {}
@@ -25,11 +25,11 @@ random.seed(SEED)
 staged = buckets.get("staged", [])
 keep_staged = random.sample(staged, round(len(staged) * STAGED_FRAC))
 kept = sorted(buckets.get("oi", []) + buckets.get("r46", []) +
-              buckets.get("diverse", []) + keep_staged, key=lambda p: p.name)
+              buckets.get("diverse", []) + buckets.get("hard_negative", []) + keep_staged, key=lambda p: p.name)
 
-list_path = DEST / "train_v2.txt"
+list_path = DEST / "train_v3.txt"
 list_path.write_text("\n".join(p.resolve().as_posix() for p in kept) + "\n")
-(DEST / "dataset_v2.yaml").write_text(
+(DEST / "dataset_v3.yaml").write_text(
     f"path: {DEST.resolve().as_posix()}\ntrain: {list_path.resolve().as_posix()}\n"
     f"val: images/val\ntest: images/test\nnames:\n  0: gun\n")
 
