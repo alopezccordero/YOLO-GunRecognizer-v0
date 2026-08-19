@@ -5,7 +5,7 @@
 from pathlib import Path
 from PIL import Image
 ROOT = Path(__file__).resolve().parent
-SRC = ROOT / "_roboflow_dl" / "cctv-gun-detector-v1" # source from roboflow_dl
+SRC = ROOT / "_roboflow_dl" / "footage-guntest-v2" # source from roboflow_dl
 DEST = ROOT / "gun_dataset"
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 THRESH = 8
