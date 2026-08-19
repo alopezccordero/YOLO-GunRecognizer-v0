@@ -6,7 +6,7 @@ from ultralytics import YOLO
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DATASET_YAML = PROJECT_ROOT / "gun_dataset" / "dataset_v3.yaml"
+DATASET_YAML = PROJECT_ROOT / "gun_dataset" / "dataset_v2.yaml"
 
 
 def main() -> None:
@@ -36,7 +36,7 @@ def main() -> None:
         save=True,
         save_period=10,
         project=str(PROJECT_ROOT / "runs" / "gun_detector"),
-        name="yolo26s_1280_v3",
+        name="yolo26s_1280_v2",
         seed=42,
         verbose=True,
         mixup=0.2,
