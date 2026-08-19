@@ -5,7 +5,7 @@ from ultralytics import YOLO
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DATASET_YAML = PROJECT_ROOT / "gun_dataset" / "dataset_downsample_cctv.yaml"
+DATASET_YAML = PROJECT_ROOT / "gun_dataset" / "dataset_v2.yaml"
 
 
 def main() -> None:

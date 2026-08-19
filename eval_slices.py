@@ -19,6 +19,7 @@ import argparse
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import yaml
 from ultralytics import YOLO
 
@@ -44,24 +45,44 @@ def list_images(split: str, keep) -> list[str]:
             if p.suffix.lower() in IMG_EXTS and keep(p.name)]
 
 
-def recall_prec_at_conf(m):
-    """Recall/precision for class 0 at the confusion-matrix's conf threshold.
+def recall_prec_at_conf(m, conf):
+    """Recall & precision at a FIXED confidence threshold for class 0.
 
     b.mp / b.mr are reported at the max-F1 point on the PR curve, NOT at a
-    fixed conf. To see deployment behaviour at a chosen threshold we read the
-    confusion matrix, which IS built at the conf passed to val().
-    Layout: matrix[pred, true], last index = background.
-      TP=matrix[0,0]  FP=matrix[0,1](pred gun, true bg)  FN=matrix[1,0](missed)
-    Returns (R, P) or (None, None) if the matrix isn't available.
+    chosen conf. To see deployment behaviour at `conf` we read the
+    recall/precision-vs-confidence curves that val() computes over the full
+    [0,1] threshold sweep and interpolate at `conf`. (The old confusion-matrix
+    read returned zeros because the matrix isn't populated with plots=False.)
+    Returns (R, P), either of which may be None if the curves aren't available.
     """
+    b = m.box
+    # Primary: internal curve arrays (px = confidence axis, *_curve per class).
     try:
-        cm = m.confusion_matrix.matrix
-        tp = float(cm[0, 0]); fp = float(cm[0, 1]); fn = float(cm[1, 0])
-        r = tp / (tp + fn) if (tp + fn) else 0.0
-        p = tp / (tp + fp) if (tp + fp) else 0.0
-        return r, p
+        px = np.asarray(b.px, dtype=float)            # (1000,) confidences 0..1
+        rc = np.asarray(b.r_curve, dtype=float)       # (nc, 1000) recall
+        pc = np.asarray(b.p_curve, dtype=float)       # (nc, 1000) precision
+        r = rc[0] if rc.ndim == 2 else rc
+        p = pc[0] if pc.ndim == 2 else pc
+        if px.size and r.size == px.size:
+            return float(np.interp(conf, px, r)), float(np.interp(conf, px, p))
     except Exception:
-        return None, None
+        pass
+    # Fallback: public curves_results, matched by axis labels.
+    R = P = None
+    try:
+        for x, y, xlabel, ylabel in b.curves_results:
+            if "confidence" not in str(xlabel).lower():
+                continue
+            yv = np.asarray(y, dtype=float)
+            yv = yv[0] if yv.ndim == 2 else yv
+            val = float(np.interp(conf, np.asarray(x, dtype=float), yv))
+            if str(ylabel).lower().startswith("recall"):
+                R = val
+            elif str(ylabel).lower().startswith("precision"):
+                P = val
+    except Exception:
+        pass
+    return R, P
 
 
 def main() -> None:
@@ -94,16 +115,13 @@ def main() -> None:
                 "val": str(list_txt),
                 "names": {0: "gun"},
             }))
-            # Pass 1: low conf -> mAP + max-F1 P/R (comparable to prior tables).
+            # Single low-conf pass: gives mAP + max-F1 P/R AND the full
+            # recall/precision-vs-confidence curves used for R@conf / P@conf.
             m = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
                           conf=args.conf, iou=args.iou, augment=args.augment,
                           plots=False, verbose=False)
             b = m.box
-            # Pass 2: deployment conf -> confusion-matrix recall/precision.
-            m2 = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
-                           conf=args.dep_conf, iou=args.iou, augment=args.augment,
-                           plots=False, verbose=False)
-            r_dep, p_dep = recall_prec_at_conf(m2)
+            r_dep, p_dep = recall_prec_at_conf(m, args.dep_conf)
             rows.append((name, len(imgs),
                          (b.mp, b.mr, b.map50, b.map, r_dep, p_dep)))
 
@@ -127,7 +145,7 @@ def main() -> None:
     print("=" * 88)
     print("P/R/mAP50/mAP50-95 = PR-curve metrics (P/R at max-F1 point).")
     print(f"R@{args.dep_conf}/P@{args.dep_conf} = recall/precision at the deployment "
-          f"conf threshold (from confusion matrix).")
+          f"conf threshold (interpolated from the R/P-confidence curve).")
     print("Headline number: 'test / youtube' = never-seen, in-the-wild.")
 
 

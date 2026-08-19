@@ -1,5 +1,13 @@
 open-images-v7
 gun_dataset
+benchmarks
 _roboflow_dl
+runs
 *out
 *err
+*mp4
+*jpg 
+*jpeg
+*png
+*bmp
+*webp
