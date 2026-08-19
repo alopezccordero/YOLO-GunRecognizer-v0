@@ -9,6 +9,7 @@ IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 def kind(name):
     if name.startswith("cctv-gun-detector_"): return "diverse"   # NEW — keep ALL
+    if name.startswith("footage-guntest_"): return "diverse" # NEW - keep ALL
     if name.startswith("cctv_"):              return "staged"    # gmd/mgd — downsample
     if name.startswith("r46_"):               return "r46"       # keep
     if name.startswith("pistol-csvic_"):      return "pistol"    # exclude
