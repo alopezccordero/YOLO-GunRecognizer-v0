@@ -25,7 +25,7 @@ python --version
 
 nvidia-smi
 
-python train_v2.py
+python train_v3.py
 
 WEBHOOK_URL=$(cat ~/.discord_webhook)
 
