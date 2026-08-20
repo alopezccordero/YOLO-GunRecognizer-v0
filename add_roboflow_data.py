@@ -75,6 +75,7 @@ def main() -> None:
                     help="Re-download even if a local copy already exists.")
     args = ap.parse_args()
 
+    load_dotenv()
     api_key = os.getenv("ROBOFLOW_API_KEY")
     if not api_key:
         raise SystemExit("Set ROBOFLOW_API_KEY in the environment first.")
