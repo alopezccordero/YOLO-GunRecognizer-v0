@@ -4,6 +4,7 @@ import argparse
 import os
 import shutil
 from pathlib import Path
+from dotenv import load_dotenv
 
 import yaml
 from roboflow import Roboflow
@@ -74,7 +75,7 @@ def main() -> None:
                     help="Re-download even if a local copy already exists.")
     args = ap.parse_args()
 
-    api_key = "ROBOFLOW_API"
+    api_key = os.getenv("ROBOFLOW_API_KEY")
     if not api_key:
         raise SystemExit("Set ROBOFLOW_API_KEY in the environment first.")
     if not DEST.exists():
