@@ -119,7 +119,7 @@ def main() -> None:
             # recall/precision-vs-confidence curves used for R@conf / P@conf.
             m = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
                           conf=args.conf, iou=args.iou, augment=args.augment,
-                          plots=False, verbose=False)
+                          workers=0, plots=False, verbose=False)
             b = m.box
             r_dep, p_dep = recall_prec_at_conf(m, args.dep_conf)
             rows.append((name, len(imgs),

@@ -1,0 +1,282 @@
+================================================================================
+CCTV GUN DETECTOR — EXPERIMENT ANALYSIS
+Single-class ("gun") YOLO detector — full record of every training run
+================================================================================
+
+--------------------------------------------------------------------------------
+TL;DR
+--------------------------------------------------------------------------------
+- The bottleneck was the TRAINING DATA DISTRIBUTION, not model size or tuning.
+- Real-world (out-of-distribution) recall on unseen robbery-CCTV rose from
+  0.149 -> 0.544 across the project. Every gain came from changing the DATA.
+- Scaling the model/resolution, augmentation, and confidence-threshold tuning
+  gave essentially ZERO out-of-distribution improvement.
+- Two things that "should" have helped actually HURT: adding same-source
+  footage (pistol-csvic), and removing Open Images / cutting augmentation.
+- Downsampling over-represented data IMPROVED generalization (less data,
+  better OOD) — the most counter-intuitive finding.
+- Hard negatives cut the false-positive rate from ~24% to 1% (a 24x drop) at a
+  tiny recall cost — the single biggest deployability win.
+- Shipped model = "B" (v3): diverse data + hard negatives.
+
+Key benchmarks are two INDEPENDENT sets:
+  1. test/youtube  — held-out real robbery-CCTV frames (the honest OOD number).
+  2. UGR handgun benchmark — a published dataset, deduped against training.
+
+--------------------------------------------------------------------------------
+EVALUATION METHODOLOGY (why the numbers can be trusted)
+--------------------------------------------------------------------------------
+- PER-SLICE EVALUATION (eval_slices.py). Metrics are reported separately for
+  catalog (Open Images), staged CCTV, and real-CCTV (youtube) instead of one
+  blended average. Blended numbers hid the hard cases.
+- VIDEO-LEVEL SPLITS. Frames from a single video never straddle train/test, so
+  near-duplicate consecutive frames cannot leak.
+- PERCEPTUAL-HASH DEDUP (dHash). Every added dataset was hash-checked against
+  the test set and quarantined where it overlapped. Examples caught:
+    * pistol-csvic: 19 frames were exact duplicates of youtube test frames.
+    * cctv-gun-detector: an entire video (V5, 69 frames) was in the youtube test.
+    * UGR benchmark: 121 of 3000 images overlapped training (Roboflow's public
+      "pistols" set IS the UGR data, already merged earlier) -> removed.
+- INDEPENDENT BENCHMARK. UGR handgun (2879 deduped images) cross-checks the
+  in-house OOD slice. When BOTH move together, the gain is real, not leakage.
+- DEPLOYMENT METRICS. R@conf / P@conf report recall & precision at a fixed
+  confidence (interpolated from the recall-confidence curve), i.e. how the model
+  behaves as a deployed alarm, not just at the max-F1 operating point.
+
+Reference points used below:
+  test/youtube = out-of-distribution real robbery CCTV (the headline number).
+  val/cctv     = staged CCTV, reads ~0.99-1.00 for EVERY model = SCENE LEAKAGE
+                 (held-out clips are the same rooms/actors as training). Ignored.
+
+================================================================================
+EXPERIMENT-BY-EXPERIMENT
+================================================================================
+
+--------------------------------------------------------------------------------
+[1] baseline  (yolo26n, imgsz 640)
+--------------------------------------------------------------------------------
+Config      : YOLO26n (nano), 640px, standard augmentation.
+Hypothesis  : Establish a floor.
+Result      : test/youtube R 0.149 ; test/openimages mAP50 ~0.666.
+              Best epoch 83, catalog mAP50-95 0.481.
+Verdict     : Decent on catalog guns, near-useless on real footage. This gap
+              defined the whole project.
+
+--------------------------------------------------------------------------------
+[2] yolo26s_960_aug  (yolo26s, imgsz 960, mixup 0.1, copy_paste 0.2, cos_lr)
+--------------------------------------------------------------------------------
+Config      : Bigger model (small), higher res, more augmentation.
+Hypothesis  : A bigger/better-tuned model will generalize better.
+Result      : test/youtube R 0.199 (+0.05) ; test/openimages mAP50 0.730 (+0.06).
+              ~4x training time.
+Verdict     : FALSIFIED the "scale the model" thesis. The catalog number rose
+              (model/res bump), but real-world recall barely moved. First hard
+              evidence that architecture was NOT the bottleneck.
+
+--------------------------------------------------------------------------------
+[3] yolo26s_960_aug_2  (+ in-domain CCTV data, video-level re-split)
+--------------------------------------------------------------------------------
+Config      : Added Gun-Movies-Database CCTV frames; fixed frame-leakage with a
+              video-level train/val/test split.
+Hypothesis  : In-domain (surveillance) data will fix real-world recall.
+Result      : test/youtube R 0.450 (up from 0.199 — a 2.3x jump).
+              Blended val looked great (mAP50 0.91) but eval_slices exposed it:
+                - val/cctv R 0.99  -> SCENE leakage (same staged rooms).
+                - val/openimages R 0.68 -> CCTV data was NEUTRAL on catalog.
+                - test/youtube R 0.45 -> the honest real-world number.
+Verdict     : CONFIRMED "data is the bottleneck." In-domain data 2.3x'd OOD
+              recall where model scaling did nothing. Also exposed how misleading
+              the blended metric is (drove the per-slice methodology).
+
+--------------------------------------------------------------------------------
+[4] yolo26s_1280_diverse  (+ guns-r46kc "diverse" data, imgsz 1280)
+--------------------------------------------------------------------------------
+Config      : Added arads1/guns-r46kc (mixed posed/robbery/movie); imgsz 1280;
+              batch 16; scale 0.9.
+Hypothesis  : More DIVERSE real-ish data + higher res pushes OOD further.
+Result      : test/youtube R 0.494 (only +0.04 over CCTV run).
+              mAP50 0.551, mAP50-95 0.219, P 0.759.
+              test/openimages mAP50 0.762 (1280 helped catalog; no forgetting).
+Verdict     : KEY LESSON: "diverse" != "in-domain." Generic diversity (range
+              photos, movie scenes) barely transferred to grainy fixed-camera
+              robbery footage. High precision (0.76) + low recall (0.49) meant
+              the model was TIMID, not wrong — but the misses were real.
+
+--------------------------------------------------------------------------------
+[5] yolo26s_1280_diverse_2  (+ ainew/pistol-csvic, all-to-train)  ***REGRESSION***
+--------------------------------------------------------------------------------
+Config      : Added pistol-csvic (train 11,544). Same-source robbery/CCTV +
+              posed pistols. 19 exact youtube-duplicate frames removed first.
+Hypothesis  : More real robbery/CCTV data lifts OOD recall.
+Result      : test/youtube R 0.351 (DOWN from 0.494), mAP50 0.284 (from 0.551),
+              mAP50-95 0.071 (from 0.219). In-distribution held/improved
+              (val/all mAP50 0.917) — ONLY the OOD slice collapsed.
+Verdict     : It HURT. Diagnosis: the data was drawn from the SAME robbery
+              channels as the youtube test and skewed to posed pistols; dumping
+              it all-to-train amplified scene-overfitting and degraded true
+              generalization. Confirmed and sharpened: adding more
+              in-domain-LOOKING data is not automatically good; SAME-SOURCE data
+              is a trap. (Also: threshold tuning does NOT rescue this — the
+              misses are hard, not low-confidence.)
+
+--------------------------------------------------------------------------------
+[6] downsample staged CCTV -> 1/3   ***CHAMPION (first real win by REMOVING data)***
+--------------------------------------------------------------------------------
+Config      : Reverted pistol-csvic. Cut the over-represented staged CCTV
+              (gmd/mgd, 0 transfer) to 1/3. Train 6158. Everything else champion.
+Hypothesis  : Over-representation of memorizable staged scenes is causing the
+              scene-overfitting that tanks OOD; cutting it should help.
+Result      : test/youtube R 0.512, mAP50 0.565, mAP50-95 0.283 (+0.064 vs the
+              diverse run, +29% relative), R@0.05 0.594.
+              No in-distribution cost (val/all mAP50 0.921).
+Verdict     : WON — with 27% LESS data. Confirmed scene-overfitting was real and
+              that the over-represented, low-transfer staged data was actively
+              hurting generalization. Became the baseline for all later runs.
+              Portfolio headline: "improved OOD by REMOVING training data."
+
+--------------------------------------------------------------------------------
+[7] downsample + Open Images cut to 1/2   (Exp 4)   ***LOST***
+--------------------------------------------------------------------------------
+Config      : On top of champion, also cut Open Images (large-gun catalog) to 1/2.
+              Train 5195.
+Hypothesis  : Catalog guns (median 44% of frame) bias the model toward LARGE
+              guns; cutting them should help small youtube guns.
+Result      : test/youtube R 0.503, mAP50 0.528, mAP50-95 0.259 (all below
+              champion). test/openimages also dropped (mAP50 0.760 -> 0.689).
+Verdict     : LOST. Large-gun-bias theory FALSIFIED. Cutting OI removed
+              appearance diversity and hurt everything slightly. Together with
+              [6] this BRACKETS the composition lever: cutting staged CCTV helps,
+              cutting Open Images hurts -> the champion mix is the optimum.
+
+--------------------------------------------------------------------------------
+[8] downsample + mixup 0.2   (Exp 5 / consolidation)   ***LOST***
+--------------------------------------------------------------------------------
+Config      : On top of champion, mixup 0.1 -> 0.2. Train 6158.
+Hypothesis  : More regularization (mixup) reduces overfitting -> better OOD.
+Result      : test/youtube R 0.455 (worse than champion 0.512), mAP50 0.520,
+              mAP50-95 0.265; P@0.2 also fell.
+Verdict     : LOST. More mixup mildly HURT OOD. Rejected.
+
+--------------------------------------------------------------------------------
+[9] downsample + scale 0.9 -> 0.5   ***LOST***
+--------------------------------------------------------------------------------
+Config      : On top of champion, reduced scale augmentation.
+Hypothesis  : Extreme scale jitter (0.1x-1.9x) hurts localization; taming it
+              helps.
+Result      : test/youtube R 0.464, mAP50 0.509 (below champion).
+Verdict     : LOST. The aggressive scale=0.9 was earning its keep; reducing it
+              hurt. (Instinct to reduce augmentation was the wrong direction.)
+
+    --- After [6]-[9]: config/threshold/composition levers EXHAUSTED. The only
+        remaining lever proven to move OOD is MORE genuinely diverse, DIFFERENT-
+        SOURCE in-domain data. Also characterized the honest ceiling: ~40% of
+        youtube guns are HARD MISSES (no detection at any usable confidence);
+        it is a DATA/DETECTION gap, not resolution (higher-res inference gave
+        nothing) and not a threshold gap (recall only reaches ~0.59 at conf 0.05
+        before precision collapses). ---
+
+--------------------------------------------------------------------------------
+[10] "A" = v2  (champion + DIVERSE MULTI-SOURCE real CCTV)   ***RECALL WIN***
+--------------------------------------------------------------------------------
+Config      : Added two genuinely different real-robbery-CCTV datasets:
+                - mohammadreza/cctv-gun-detector (940 frames, 7 distinct videos;
+                  video-level deduped vs youtube -> dropped video V5).
+                - footage-guntest (~1419 frames).
+              Total "diverse" = 2359. Train 8517. Champion config otherwise.
+Hypothesis  : DIFFERENT-source (not same-source) real robbery footage will
+              finally lift OOD recall.
+Result      : test/youtube R 0.544 (best in project history), mAP50 0.617,
+              mAP50-95 0.330 (+0.05 over champion), R@0.2 0.569, P@0.2 0.788.
+              UGR mAP50 0.801 -> 0.848 ; mAP50-95 0.586 -> 0.636.
+Verdict     : WON. Both INDEPENDENT benchmarks (OOD youtube + published UGR)
+              rose together -> the gain is REAL, not leakage. Broke the plateau.
+              Confirmed the sharpened thesis: diverse MULTI-SOURCE in-domain
+              data helps (unlike same-source pistol-csvic, which hurt).
+              Downside: false-positive rate stayed high (24% — see [12]).
+
+--------------------------------------------------------------------------------
+[11] "B" = v3  (A + HARD NEGATIVES)   ***DEPLOYMENT MODEL***
+--------------------------------------------------------------------------------
+Config      : A (v2) + 497 hard-negative surveillance backgrounds
+              (shauryaworkspace/security-footage-analysis, EMPTY labels =
+              "no gun here"; ~5.5% of train). Train 9014.
+Hypothesis  : Hard negatives cut false positives (the model was firing on phones
+              and normal surveillance scenes) at an acceptable recall cost.
+Result      : test/youtube R 0.529 (slightly below A's 0.544 = the expected
+              hard-negative recall cost), mAP50 0.585, mAP50-95 0.290.
+              UGR mAP50 0.856 (held/edged up).
+              FALSE-POSITIVE RATE: see [12] — collapsed to 1%.
+Verdict     : WON on precision. Small, recoverable recall cost for a massive
+              false-alarm reduction. THIS IS THE MODEL TO DEPLOY.
+
+--------------------------------------------------------------------------------
+[12] HARD-NEGATIVE EVALUATION  (eval_hard_neg.py — 400 held-out no-gun scenes)
+--------------------------------------------------------------------------------
+Measured on 400 real surveillance images containing NO gun, none trained on.
+Every detection = a false positive. False-positive rate (% of images that fire):
+
+  confidence >=      Champion     A (v2, diverse)     B (v3, + hard neg)
+  ----------------------------------------------------------------------
+     0.05              37.0%          36.5%                2.2%
+     0.10              28.2%          31.0%                1.8%
+     0.20              22.5%          25.8%                1.2%
+     0.25              22.2%          24.0%                1.0%
+     0.30              21.0%          22.8%                1.0%
+     0.50              17.8%          19.2%                0.5%
+
+Verdict     : Hard negatives = ~24x fewer false alarms (24.0% -> 1.0% at conf
+              0.25). Diverse data ALONE slightly INCREASED false positives
+              (more triggering) — confirming FPs are a PRECISION problem fixed
+              by hard negatives, not by more positive data. The standout result.
+
+================================================================================
+FINAL RESULTS SUMMARY
+================================================================================
+
+Out-of-distribution recall (test/youtube) — the honest real-world number:
+  baseline 0.149 -> +scale 0.199 -> +CCTV 0.450 -> +diverse(r46) 0.494
+  -> +pistol-csvic 0.351 (HURT) -> downsample 0.512 -> +multi-source 0.544
+
+Three-model comparison (all @960px):
+  Model                    youtube R   youtube mAP50-95   UGR mAP50   FP@0.25
+  ----------------------------------------------------------------------------
+  Champion (downsample)      0.512          0.283           0.801      22.2%
+  A  (+ diverse)             0.544          0.330           0.848      24.0%
+  B  (+ diverse + hard neg)  0.529          0.290           0.856       1.0%   <-- SHIP
+
+UGR published handgun benchmark (deduped, 2879 imgs):
+  Model        P       R      mAP50   mAP50-95   R@0.2
+  ------------------------------------------------------
+  Champion   0.860   0.740   0.801    0.586      0.775
+  A (v2)     0.899   0.804   0.848    0.636      0.824
+  B (v3)     0.899   0.794   0.856    0.636      0.832
+
+Speed: ~46 FPS (end-to-end) to ~85 FPS (inference) at 960px on an RTX 4060 laptop.
+
+================================================================================
+CROSS-CUTTING FINDINGS
+================================================================================
+1. DATA > ARCHITECTURE. Model size, resolution, and augmentation gave ~0 OOD
+   gain. Data-distribution changes drove every real improvement.
+2. "DIVERSE" != "IN-DOMAIN". Generic diversity (r46) barely transferred; SAME-
+   source data (pistol-csvic) actively hurt; DIFFERENT-source in-domain data
+   (v2) was the win.
+3. LESS CAN BE MORE. Downsampling over-represented staged data improved OOD.
+4. PRECISION AND RECALL ARE SEPARATE LEVERS. Diverse positives raise recall;
+   hard negatives cut false positives. Solved independently, combined in B.
+5. THE CEILING IS HONEST. ~40% of the hardest guns are undetectable at usable
+   confidence — a characterized DATA/DETECTION limit, not resolution or
+   threshold. Reported, not hidden.
+6. DISAGGREGATE OR LIE. The staged-CCTV slice reads a perfect 1.00 for every
+   model (scene leakage). Per-slice eval + independent benchmark is what keeps
+   the numbers honest.
+
+================================================================================
+RECOMMENDATION
+================================================================================
+- SHIP model B (v3): best UGR mAP (0.856), competitive OOD recall (0.53), and a
+  24x lower false-alarm rate (1%) than any prior model.
+- NEXT to raise recall further: collect MORE genuinely different-source, real
+  in-domain robbery/CCTV footage (the only lever left that moves the OOD number),
+  and split a fresh, never-touched OOD source as a locked final test set.
+================================================================================

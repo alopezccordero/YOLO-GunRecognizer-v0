@@ -56,7 +56,7 @@ def main() -> None:
         }))
         m = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
                       conf=args.conf, iou=args.iou, augment=args.augment,
-                      plots=False, verbose=False)
+                      workers=0, plots=False, verbose=False)
     b = m.box
     rd, pd = recall_prec_at_conf(m, args.dep_conf)
     rd_s = f"{rd:.3f}" if rd is not None else "n/a"
