@@ -1,5 +1,8 @@
 # YOLO-GunRecognizer-V0
 
+- **THERE WAS A DATA LEAKAGE FOR V3 EXPERIMENT (HARDNEGS) - PROJECT IN PROGRESS**
+
+
 `YOLO-GunRecognizer-v0`. Single-class ("gun") computer vision model trained to detect
 firearms. The YOLO architecture was used to make the model deployable in real world cameras for live detection.
 
@@ -13,6 +16,8 @@ considered as the best first approach, such techniques barely improved the model
 
 - **Shipped model: v3**: UGR mAP 0.856, OOD Recall 0.53, 1% False-Positives.
                          46-85 FPS on RTX 4060  
+
+- **THERE WAS A DATA LEAKAGE FOR V3 EXPERIMENT (HARDNEGS) - PROJECT IN PROGRESS**
 
 ## Key Files
 
