@@ -12,7 +12,7 @@ workspace = rf.workspace("alejandro-lopez-cordero")
 
 workspace.deploy_model(
     model_type="yolo26",   # ⚠️ see note below — your weights are yolo26s
-    model_path="./runs/gun_detector/yolo26s_1280_v3/",
-    project_ids=["yolo-gundetection"],
-    model_name="gun-detector-downsample",
+    model_path="./runs/gun_detector/yolo26s_1280_v2/",
+    project_ids=["yolo-gundetection-lzsoh"],
+    model_name="gun-detector-v2",
 )

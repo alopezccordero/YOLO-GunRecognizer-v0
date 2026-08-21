@@ -12,12 +12,10 @@ Key benchmark:
 ### TL;DR
 A single-class YOLO model (class: "gun") designed for live-monitoring and real-surveillance frames. 
 - Main problem: data distribution. While at first, hyperparameter-tunning was 
-considered as the best first approach, such techniques barely improved the model. However, by performing data techniques such as downsampling, including hard-negatives, etc. The model improved by 3.65x (recall).
+considered as the best first approach, such techniques barely improved the model. However, by performing data curation techniques. The model improved by 3.65x (recall).
 
-- **Shipped model: v3**: UGR mAP 0.856, OOD Recall 0.53, 1% False-Positives.
-                         46-85 FPS on RTX 4060  
-
-- **THERE WAS A DATA LEAKAGE FOR V3 EXPERIMENT (HARDNEGS) - PROJECT IN PROGRESS**
+- **Shipped model: v2**: Test/youtube P 0.879, R 0.544 - mAP 0.617, mAP-95 0.330
+                        UGR          P 0.899, R 0.804 - mAP 0.848, mAP50-95 0.636
 
 ## Key Files
 
@@ -189,9 +187,19 @@ val/cctv: staged cctv (reads 0.99-1 for every model?)
                  but slightly lower recall by making the model more conservative.
 - Result       : Test/Youtube P 0.799, R 0.529 - mAP 0.585, mAP-95 0.290
                  UGR          P 0.899, R 0.794 - mAP50 0.856, mAP50-95 0.636 
+- Hard Negative Eval:
+  confidence >=      Downsample     V2 (+diverse footage)     V3 (+hard neg)
+  ----------------------------------------------------------------------
+     0.05              37.0%          36.5%                2.2%
+     0.10              28.2%          31.0%                1.8%
+     0.20              22.5%          25.8%                1.2%
+     0.25              22.2%          24.0%                1.0%
+     0.30              21.0%          22.8%                1.0%
+     0.50              17.8%          19.2%                0.5%
                  
-- Conclusion   : While P on Test/Youtube data decreased by 8% when compared to V2. 
-                 a Hard negative Evaluation was made. Decreasing detection on non-firearm frames by 24%
+- Conclusion   : Test/Youtube P decreased while Hard Negative Eval overfitted.
+                 0.05 FP at 0.5 confidence. which suggests data leagake in hard-negatives
+                 training data. 
 
 
 ### [HARD-NEGATIVE EVALUATION]
