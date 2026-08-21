@@ -47,11 +47,12 @@ def main() -> None:
 
     model = YOLO(args.weights)
     with tempfile.TemporaryDirectory() as tmp:
-        data_yaml = Path(tmp) / "ugr.yaml"
+        list_abs = str(Path(args.list).resolve())   # absolute so it isn't re-based under `path`
+        data_yaml = Path(tmp) / "bench.yaml"
         data_yaml.write_text(yaml.safe_dump({
-            "path": str(UGR.resolve()),
-            "train": args.list,
-            "val": args.list,
+            "path": str(Path(args.list).resolve().parent),
+            "train": list_abs,
+            "val": list_abs,
             "names": {0: "gun"},
         }))
         m = model.val(data=str(data_yaml), split="val", imgsz=args.imgsz,
@@ -65,7 +66,7 @@ def main() -> None:
     n_imgs = sum(1 for _ in open(args.list)) if Path(args.list).exists() else "?"
     tta = " +TTA" if args.augment else ""
     print("\n" + "=" * 72)
-    print(f"UGR handgun benchmark (deduped vs train)  imgsz={args.imgsz}{tta}")
+    print(f"{Path(args.list).stem} benchmark (deduped vs train)  imgsz={args.imgsz}{tta}")
     print(f"weights = {Path(args.weights).parent.parent.name}   images = {n_imgs}")
     print("-" * 72)
     print(f"  P        {b.mp:.3f}")
