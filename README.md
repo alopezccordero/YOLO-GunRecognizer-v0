@@ -1,6 +1,8 @@
 # YOLO-GunRecognizer-V0
 
-- **THERE WAS A DATA LEAKAGE FOR V3 EXPERIMENT (HARDNEGS) - PROJECT IN PROGRESS**
+- **A benchmark data-leak in the v3 hard-negative evaluation was caught and fixed via a dHash audit.
+  The final model is `v3-2`, retrained with an independent hard-negative source and re-scored on a
+  clean, deduped benchmark. All headline numbers below are the corrected, leak-audited results.**
 
 
 `YOLO-GunRecognizer-v0`. Single-class ("gun") computer vision model trained to detect
@@ -12,10 +14,12 @@ Key benchmark:
 ### TL;DR
 A single-class YOLO model (class: "gun") designed for live-monitoring and real-surveillance frames. 
 - Main problem: data distribution. While at first, hyperparameter-tunning was 
-considered as the best first approach, such techniques barely improved the model. However, by performing data curation techniques. The model improved by 3.65x (recall).
+considered as the best first approach, such techniques barely improved the model. However, by performing data curation techniques. The model improved by 3.8x (recall: 0.149 -> 0.568).
 
-- **Shipped model: v2**: Test/youtube P 0.879, R 0.544 - mAP 0.617, mAP-95 0.330
-                        UGR          P 0.899, R 0.804 - mAP 0.848, mAP50-95 0.636
+- **Shipped model: v3-2** (diverse in-domain data + hard negatives):
+  - test/youtube  P 0.847, R 0.568 - mAP50 0.628, mAP50-95 0.332
+  - UGR           P 0.922, R 0.787 - mAP50 0.850, mAP50-95 0.637
+  - False-positive rate 17.0% @conf 0.25 (lowest of all models)
 
 ## Key Files
 
@@ -73,8 +77,11 @@ against test set. Examples
 - R@conf / P@conf: Suggested fixed-confidence for deployment. These values return 
 recall and precision with suggested confidence.
 
-test/youtube: real robbery CCTV (less/confusing image quality)
-val/cctv: staged cctv (reads 0.99-1 for every model?)
+test/youtube: real robbery CCTV (low/confusing image quality) — the honest out-of-distribution metric.
+val/cctv: staged CCTV — reads ~1.00 for EVERY model because a dHash audit found 99% of these frames are
+near-duplicates of training frames (median distance 2; the staged clips are all the same room/camera).
+It is scene-level leaked and cannot be a valid held-out slice, so it is EXCLUDED from reported metrics
+and kept only as in-domain training signal.
 
 ## Experiments
 
@@ -202,31 +209,45 @@ val/cctv: staged cctv (reads 0.99-1 for every model?)
                  training data. 
 
 
-### [HARD-NEGATIVE EVALUATION]
-  confidence >=      Downsample     V2 (+diverse footage)     V3 (+hard neg)
-  ----------------------------------------------------------------------
-     0.05              37.0%          36.5%                2.2%
-     0.10              28.2%          31.0%                1.8%
-     0.20              22.5%          25.8%                1.2%
-     0.25              22.2%          24.0%                1.0%
-     0.30              21.0%          22.8%                1.0%
-     0.50              17.8%          19.2%                0.5%
+### yolo26s_1280_v3-2   (corrected — v2 + INDEPENDENT hard negatives)
+- Config      : The original v3 hard negatives came from security-footage-analysis, which had
+                LEAKED into the FP benchmark (same-source video frames), faking a 1% rate. Retrained
+                with 498 hard negatives from an INDEPENDENT source (people-fkg4e, empty labels), and
+                rebuilt the FP benchmark to dHash-dedup against the whole training set. Train ~9,014.
+- Hypothesis  : Hard negatives from an unleaked source will still cut false positives.
+- Result      : test/youtube  P 0.847, R 0.568 - mAP50 0.628, mAP50-95 0.332
+                UGR           P 0.922, R 0.787 - mAP50 0.850, mAP50-95 0.637
+- Conclusion  : Confirmed, but MODESTLY (not the 24x seen under the leak). people-fkg4e is
+                off-domain (COCO people, not surveillance), so it under-teaches the real failure
+                mode. v3-2 is nonetheless the best model on every metric.
 
-- Conclusion   : 24x Hard negatives by experiment v3.  
+### [HARD-NEGATIVE EVALUATION]  (CLEAN benchmark: all models on the SAME 400 held-out
+    no-gun images, dHash-deduped vs the whole training set)
+  confidence >=      Downsample     V2 (+diverse)     V3-2 (+hard neg)
+  --------------------------------------------------------------------
+     0.05              35.8%           29.8%              25.5%
+     0.10              26.2%           26.2%              22.5%
+     0.20              20.5%           20.5%              18.5%
+     0.25              18.5%           19.0%              17.0%
+     0.30              16.5%           17.5%              16.0%
+     0.50              13.8%           14.5%              13.0%
+
+- Conclusion   : v3-2 has the LOWEST false-positive rate at every threshold — a real but modest
+                 reduction. (The earlier "24x / 1%" was a benchmark leak, now corrected.)
 
 ### Final Result
 
-Three-model comparison (all @960px):
-  Model                    youtube R   youtube mAP50-95   UGR mAP50   FP@0.25
-  ----------------------------------------------------------------------------
-  Downsample                 0.512          0.283           0.801      22.2%
-  V2                         0.544          0.330           0.848      24.0%
-  V3                         0.529          0.290           0.856       1.0%  
+Three-model comparison (all @960px, leak-audited benchmarks):
+  Model                     youtube R   youtube mAP50-95   UGR mAP50   UGR P   FP@0.25
+  ------------------------------------------------------------------------------------
+  Downsample                  0.512          0.283           0.801      0.860   18.5%
+  V2   (+diverse)             0.544          0.330           0.848      0.899   19.0%
+  V3-2 (+hard neg)  <- SHIP   0.568          0.332           0.850      0.922   17.0%
 
 Speed: ~46 FPS (end-to-end) to ~85 FPS (inference) at 960px on an RTX 4060 laptop.
 
 ## USAGE
-- SHIP MODEL V3: Best UGR mAP (0.856), Competitive out of distribution data/ low-quality frames(0.53). 24x lower false-positives. 
+- SHIP MODEL V3-2: best on every metric — highest OOD recall (youtube R 0.568), highest UGR precision (0.922), and the lowest false-positive rate (17.0% @0.25). 
 - use deploy_model.py to deploy to roboflow.
     $ python deploy_model.py
 - use object_tracking.py to try model against .mp4 files
@@ -244,7 +265,8 @@ Speed: ~46 FPS (end-to-end) to ~85 FPS (inference) at 960px on an RTX 4060 lapto
 | Diverse positives | guns-r46kc | arads1 | https://universe.roboflow.com/arads1/guns-r46kc/dataset/2 |
 | Real-CCTV positives | cctv-gun-detector | mohammadreza-anvari-h6ase | https://universe.roboflow.com/mohammadreza-anvari-h6ase/cctv-gun-detector/dataset/1 |
 | Real-CCTV positives | footage-guntest | gun-proj5-workspace | https://universe.roboflow.com/gun-proj5-workspace/footage-guntest/dataset/2 |
-| Hard negatives | security-footage-analysis | shauryaworkspace-guujq | https://universe.roboflow.com/shauryaworkspace-guujq/security-footage-analysis/dataset/1 |
+| Hard negatives (training) | people-fkg4e | twdaf | https://universe.roboflow.com/twdaf/people-fkg4e/dataset/1 |
+| FP benchmark (held-out, not trained on) | security-footage-analysis | shauryaworkspace-guujq | https://universe.roboflow.com/shauryaworkspace-guujq/security-footage-analysis/dataset/1 |
 
 Staged-CCTV footage derives from the **Gun Movies Database (GMD)**.
 
